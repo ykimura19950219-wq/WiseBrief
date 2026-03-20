@@ -1,0 +1,26 @@
+{
+  "name": "wisebrief",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "*",
+    "react": "*",
+    "react-dom": "*"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/node": "*",
+    "@types/react": "*",
+    "autoprefixer": "*",
+    "postcss": "*",
+    "tailwindcss": "*",
+    "typescript": "*"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
