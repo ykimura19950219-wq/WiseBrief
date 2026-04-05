@@ -4,7 +4,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "WiseBrief",
-  description: "3分で把握する情報要約"
+  description: "3分で把握する情報要約",
+  manifest: "/manifest.json"
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

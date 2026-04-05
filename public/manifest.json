@@ -1,0 +1,16 @@
+{
+  "name": "WiseBrief Pro",
+  "short_name": "WiseBrief",
+  "description": "採用・IT特化型ドヤ顔ワード生成アプリ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/icon-512x512.jpeg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}
