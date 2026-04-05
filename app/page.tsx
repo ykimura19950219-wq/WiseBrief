@@ -1,290 +1,167 @@
-"use client";
+'use client';
 
-import React, { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import {
-  Award,
-  BookOpen,
-  BrainCircuit,
-  Cpu,
-  Copy,
-  FileText,
-  Search,
-  Bell,
-  Play
-} from "lucide-react";
+import React, { useState } from 'react';
 
-type ToastKind = "success" | "error";
+// 【5件に増量】これでLINEと同じ満足感になります！
+const mockNews = [
+  {
+    id: 1,
+    category: 'HR Tech',
+    title: 'AI面接官の導入企業が前年比300%増加。人間は「カルチャーフィット」の見極めに特化へ',
+    summary: '一次面接の自動化が進む中、人事の役割は「自社の魅力を伝えるアトラクト」と「価値観のすり合わせ」にシフト。',
+    details: 'ソフトバンクやサイバーエージェントなどの大手企業を筆頭に、AIによる初期選考の導入が加速しています。AIは客観的な評価を行える一方、最終決定権は人間に残されており、いかに自社のロマンを語り口説き落とすかという「アトラクト力」が採用担当者の必須スキルとなっています。',
+    doyaWord: '「これからの採用は、AIがスキルを測り、人間がロマンを語る時代ですよね。」',
+    url: 'https://example.com/news1',
+    time: '1時間前',
+    icon: '🤖'
+  },
+  {
+    id: 2,
+    category: 'IT Trend',
+    title: '大手SaaS、LLMを活用した「ノーコード業務自動化」機能を標準搭載へ',
+    summary: '現場の担当者が自然言語でシステムを構築できる時代が到来。IT部門はガバナンス管理へ役割転換。',
+    details: 'SalesforceやServiceNowなどは、自然言語でワークフローを自動生成するCopilot機能を強化。これにより、非IT部門の社員が自ら業務改善を行えるようになる一方、IT部門にはそれらがセキュリティ基準を満たしているかを監視する「プロンプト・ガバナンス」の構築が求められています。',
+    doyaWord: '「シャドーITを恐れるのではなく、プロンプト・ガバナンスを効かせるのが次世代の情シスですよ。」',
+    url: 'https://example.com/news2',
+    time: '3時間前',
+    icon: '⚡'
+  },
+  {
+    id: 3,
+    category: 'Startup',
+    title: '採用広報に「ショート動画」旋風。カジュアル面談の前に社員の熱量を可視化',
+    summary: '文章よりも情報の解像度が高いショート動画が、若手層へのアプローチにおいて無視できない存在に。',
+    details: 'TikTokやYouTubeショートでオフィスの空気感や社員の喋り方を配信する企業が急増。これにより、面接時のミスマッチが大幅に軽減され、承諾率の向上につながるデータが出ています。',
+    doyaWord: '「求人票は読むものから、視聴するものへ。解像度の差が承諾率の差ですよ。」',
+    url: 'https://example.com/news3',
+    time: '5時間前',
+    icon: '🎥'
+  },
+  {
+    id: 4,
+    category: 'Cyber Security',
+    title: 'AI生成による巧妙なフィッシング詐欺が急増。企業守備網の再構築が急務',
+    summary: '人間では見破れない完璧な日本語の詐欺メールが登場。AIにはAIで対抗する防御策が主流に。',
+    details: 'LLMを利用して文脈や口調を模倣した詐欺メールは、従来のフィルターを突破します。これに対し、受信したメールの「違和感」をAIが検知する新しいセキュリティソリューションの導入が、エンタープライズ企業で進んでいます。',
+    doyaWord: '「これからのセキュリティは、壁を作るのではなく、AIという免疫系を育てる発想が必要ですね。」',
+    url: 'https://example.com/news4',
+    time: '6時間前',
+    icon: '🛡️'
+  },
+  {
+    id: 5,
+    category: 'SaaS',
+    title: 'ハイブリッドワーク時代の「メタバースオフィス」に再注目。雑談の価値を再定義',
+    summary: '単なるビデオ会議ではなく、空間を共有する感覚がチームの創造性を高める結果に。',
+    details: 'GatherやMetaなどの空間共有ツールが、再度注目を集めています。偶然の会話から生まれるアイデアの価値が再認識され、リモートワークにおける「孤独」を解消しつつ、エンゲージメントを高めるためのインフラとして定着し始めています。',
+    doyaWord: '「今のリモートに足りないのは業務連絡じゃなく、偶然の雑談という『余白』なんですよ。」',
+    url: 'https://example.com/news5',
+    time: '8時間前',
+    icon: '🏢'
+  }
+];
 
-function CopyButton({
-  payload,
-  label,
-  onCopied,
-  onError
-}: {
-  payload: string;
-  label: string;
-  onCopied: () => void;
-  onError: () => void;
-}) {
-  const [pending, setPending] = useState(false);
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      disabled={pending}
-      onClick={async (e) => {
-        e.stopPropagation();
-        setPending(true);
-        try {
-          await navigator.clipboard.writeText(payload);
-          onCopied();
-        } catch {
-          onError();
-        } finally {
-          setPending(false);
-        }
-      }}
-      className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#F8F9FA] text-[#D4AF37] font-bold text-sm border border-gray-200 hover:bg-[#D4AF37] hover:text-white transition-all"
-    >
-      <Copy size={16} strokeWidth={1.5} />
-    </button>
-  );
-}
+export default function Home() {
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
-export default function WiseBrief() {
-  const [toast, setToast] = useState<{ kind: ToastKind; msg: string } | null>(null);
-
-  const showToast = (kind: ToastKind, msg: string) => {
-    setToast({ kind, msg });
-    window.setTimeout(() => setToast(null), 2200);
+  const handleCopy = (e: React.MouseEvent, text: string, id: number) => {
+    e.stopPropagation();
+    if ('vibrate' in navigator) navigator.vibrate(50); 
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2500);
   };
 
-  const news = useMemo(() => {
-    const sBullets = [
-      "成約率は数字で語るべきです。相手の意思決定を“確率”で固めます。",
-      "この予測があるから、商談は手戻りゼロで設計できます。",
-      "打ち手は感覚ではなく“88%”で説明します。"
-    ];
-    const nBullets = [
-      "議事録から次アクションまで一気通貫。会話を止めません。",
-      "ToDoの粒度を自動で揃え、進捗を見える化します。",
-      "次回アポの打ち手まで相手に軽手に提示できます。"
-    ];
-    const vBullets = [
-      "営業戦略を“数秒”で立てる。初動の速さが武器です。",
-      "エージェント構築を前提に、提案の優先順位を即決します。",
-      "PoC設計も同時に出せるので、商談が前進します。"
-    ];
-
-    const buildPayload = (title: string, bullets: string[]) =>
-      `【${title}】\n\n商談で使えるトーク\n${bullets.map((b) => `- ${b}`).join("\n")}`;
-
-    return [
-      {
-        id: "salesforce",
-        icon: BrainCircuit,
-        companyIcon: BrainCircuit,
-        title: "Salesforce",
-        headline: "成約率を88%予測する営業特化AIを日本先行公開",
-        bullets: sBullets,
-        payload: buildPayload("Salesforce AI", sBullets)
-      },
-      {
-        id: "notion",
-        icon: FileText,
-        companyIcon: FileText,
-        title: "Notion AI",
-        headline: "議事録からネクストアクションを全自動生成する神アプデ",
-        bullets: nBullets,
-        payload: buildPayload("Notion AI", nBullets)
-      },
-      {
-        id: "nvidia",
-        icon: Cpu,
-        companyIcon: Cpu,
-        title: "NVIDIA",
-        headline: "法人向けAIエージェント構築ツールを発表。営業戦略を数秒で立案",
-        bullets: vBullets,
-        payload: buildPayload("NVIDIA", vBullets)
-      }
-    ] as const;
-  }, []);
-
-  // CEO素材（ユーザー提供）
-  const vipImg = "/ceo_vip.png";
-  const toolImg = "/ceo_tool.png";
-  const videoImg = "https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=400";
-  const books = [
-    {
-      title: "『チャレンジャー・セールス・モデル』",
-      img: "https://m.media-amazon.com/images/I/71uK-x4zUoL._AC_UF1000,1000_QL80_.jpg"
-    },
-    {
-      title: "『隠れたキーマンを探せ！』",
-      img: "https://m.media-amazon.com/images/I/81BwA2y3NCL._AC_UF1000,1000_QL80_.jpg"
-    }
-  ];
-
   return (
-    <div className="min-h-screen w-full font-sans bg-[#F8F9FA] text-[#1A1C1E] overflow-x-hidden">
-      <header className="fixed top-0 left-0 right-0 z-50 w-full py-4 px-8 bg-white/80 backdrop-blur-sm border-b border-gray-100 shadow-sm">
-        <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-          <div className="text-[#D4AF37] text-2xl font-black leading-none">WiseBrief</div>
-          <div className="flex items-center gap-5">
-            <Search className="w-5 h-5 text-gray-500 cursor-pointer hover:text-[#1A1C1E] transition-colors" />
-            <Bell className="w-5 h-5 text-gray-500 cursor-pointer hover:text-[#1A1C1E] transition-colors" />
-            <div className="w-10 h-10 rounded-full bg-[#D4AF37] flex items-center justify-center text-white font-extrabold text-xs shadow-sm">
-              CEO
-            </div>
+    <div className="min-h-screen bg-[#020307] bg-gradient-to-br from-[#050610] via-[#020307] to-[#0a0c1f] text-gray-100 font-sans overflow-x-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      
+      <header className="sticky top-0 z-50 backdrop-blur-2xl bg-[#050509]/60 border-b border-white/[0.03] px-5 py-4 flex justify-between items-center shadow-2xl">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-700 via-blue-600 to-emerald-400 flex items-center justify-center font-bold text-lg border border-white/10 shadow-xl shadow-blue-500/30">
+            <span className="text-white drop-shadow-md">W</span>
           </div>
+          <h1 className="text-xl font-extrabold tracking-tighter text-white">
+            WiseBrief <span className="font-light text-sm text-blue-400 font-mono italic">Pro</span>
+          </h1>
+        </div>
+        <div className="flex items-center gap-3.5">
+          <button className="w-9 h-9 rounded-full bg-white/[0.02] flex items-center justify-center border border-white/[0.05] active:scale-90 transition">🔔</button>
+          <div className="w-9 h-9 rounded-full bg-gradient-to-b from-blue-500 to-blue-600 flex items-center justify-center font-bold text-sm border-2 border-white/10 shadow-lg shadow-blue-500/20">C</div>
         </div>
       </header>
 
-      <main className="max-w-[1400px] mx-auto pt-28 pb-10 px-6 grid grid-cols-12 gap-8 items-start relative z-10">
-        {/* Left: VIP */}
-        <aside className="col-span-3">
-          <motion.div
-            whileHover={{ y: -3 }}
-            transition={{ type: "spring", stiffness: 260, damping: 22 }}
-            className="rounded-2xl border border-gray-200 bg-white p-6 mb-6 shadow-sm"
-          >
-            <div className="flex items-center gap-2 text-[#D4AF37] font-extrabold mb-4">
-              <Award size={18} />
-              <span className="text-sm">VIP Selection</span>
-            </div>
+      <main className="px-4 py-8 space-y-7 max-w-xl mx-auto">
+        <div className="pl-2 mb-10 border-l-2 border-blue-600/70">
+          <h2 className="text-xs font-semibold text-blue-400 tracking-widest uppercase mb-1.5">Today&apos;s Insight</h2>
+          <p className="text-3xl font-extrabold tracking-tighter text-white leading-tight">明日の商談を、<br/>支配する。</p>
+        </div>
 
-            <div className="aspect-[4/3] w-full rounded-xl overflow-hidden mb-4 border border-gray-100 bg-zinc-50">
-              <img src={vipImg} alt="高級名刺入れ" className="w-full h-full object-cover" />
-            </div>
-
-            <div className="mt-4 text-[#D4AF37] text-lg font-extrabold">高級名刺入れプレゼント</div>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ y: -3 }}
-            transition={{ type: "spring", stiffness: 260, damping: 22 }}
-            className="rounded-2xl border border-gray-200 bg-white p-6 mb-6 shadow-sm"
-          >
-            <div className="flex items-center gap-2 text-[#D4AF37] font-extrabold mb-2">
-              <Cpu size={18} />
-              <span className="text-sm">AI営業ツール無料体験</span>
-            </div>
-
-            <div className="aspect-[16/9] w-full rounded-xl overflow-hidden mb-4 border border-gray-100 bg-zinc-50">
-              <img src={toolImg} alt="AI営業ツール" className="w-full h-full object-cover" />
-            </div>
-
-            <div className="text-[#1A1C1E] font-extrabold">商談の“勝ち筋”をテンプレ化して即実行。</div>
-          </motion.div>
-        </aside>
-
-        {/* Center: News */}
-        <section className="col-span-6">
-          {news.map((n) => {
-            const Icon = n.companyIcon;
-            return (
-              <motion.article
-                key={n.id}
-                whileHover={{ y: -3 }}
-                transition={{ type: "spring", stiffness: 260, damping: 22 }}
-                className="rounded-2xl border border-gray-200 bg-white p-8 mb-6 shadow-sm"
-              >
-                {/* company icon + headline separated to avoid overlap */}
-                <div className="flex items-start gap-4">
-                  <div className="flex items-center justify-center rounded-xl border border-[#D4AF37]/30 bg-[#F8F9FA] h-10 w-10 flex-shrink-0">
-                    <Icon size={18} strokeWidth={2.25} color="#D4AF37" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[#D4AF37] text-xs font-extrabold uppercase tracking-[0.2em]">
-                      {n.title}
-                    </div>
-                    <div className="text-[#D4AF37] text-2xl font-extrabold leading-tight mt-1">
-                      {n.headline}
-                    </div>
-                  </div>
+        <div className="space-y-6 pb-20">
+          {mockNews.map((news) => (
+            <article 
+              key={news.id} 
+              onClick={() => setExpandedId(expandedId === news.id ? null : news.id)}
+              className="group relative backdrop-blur-sm bg-white/[0.02] border border-white/[0.04] rounded-3xl p-6 shadow-2xl transition-all cursor-pointer hover:bg-white/[0.04]"
+            >
+              
+              <div className="flex justify-between items-center mb-5">
+                <div className="flex items-center gap-3">
+                    <span className="text-2xl">{news.icon}</span>
+                    <span className="px-3.5 py-1.5 rounded-full bg-blue-600/10 text-blue-300 text-[10px] font-black tracking-widest uppercase border border-blue-600/20">
+                    {news.category}
+                    </span>
                 </div>
+                <span className="text-[10px] text-gray-600 font-bold tracking-widest uppercase">{news.time}</span>
+              </div>
 
-                <ul className="mt-4 list-disc pl-5 text-[14px] text-[#1A1C1E] space-y-2">
-                  {n.bullets.map((b, i) => (
-                    <li key={`${n.id}-b-${i}`}>{b}</li>
-                  ))}
-                </ul>
+              <h3 className="text-lg font-bold leading-snug mb-3 text-white group-hover:text-blue-200 transition-colors">
+                {news.title}
+              </h3>
+              <p className="text-sm text-gray-500 leading-relaxed mb-4 font-light line-clamp-2">
+                {news.summary}
+              </p>
 
-                <div className="mt-6 flex justify-end">
-                  <CopyButton
-                    payload={n.payload}
-                    label="商談トークをコピー"
-                    onCopied={() => showToast("success", "商談トークをクリップボードにコピーしました")}
-                    onError={() => showToast("error", "コピーに失敗しました")}
-                  />
-                </div>
-              </motion.article>
-            );
-          })}
-        </section>
-
-        {/* Right: Books + Video */}
-        <aside className="col-span-3">
-          <motion.div
-            whileHover={{ y: -3 }}
-            transition={{ type: "spring", stiffness: 260, damping: 22 }}
-            className="rounded-2xl border border-gray-200 bg-white p-6 mb-6 shadow-sm"
-          >
-            <div className="flex items-center gap-2 text-[#D4AF37] font-extrabold mb-4">
-              <BookOpen size={18} />
-              <span className="text-sm">必読の営業スキル本</span>
-            </div>
-
-            <ul className="mt-3 space-y-5">
-              {books.map((book) => (
-                <li
-                  key={book.title}
-                  className="flex items-start gap-4 cursor-pointer group"
-                  onClick={() => {
-                    // placeholder (開かない)
-                  }}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <img
-                    src={book.img}
-                    alt={book.title}
-                    className="w-24 aspect-[3/4] object-cover rounded shadow-md border border-gray-200"
-                  />
-                  <div className="min-w-0">
-                    <div className="text-[#1A1C1E] font-extrabold leading-snug">{book.title}</div>
+              <div className={`overflow-hidden transition-all duration-500 ease-in-out ${expandedId === news.id ? 'max-h-[600px] opacity-100 mb-6' : 'max-h-0 opacity-0'}`}>
+                <div className="pt-2 pb-4 text-sm text-gray-300 leading-relaxed border-t border-white/[0.03]">
+                  {news.details}
+                  <div className="mt-4">
+                    <a href={news.url} target="_blank" onClick={(e) => e.stopPropagation()} className="text-xs text-blue-400 font-bold hover:underline flex items-center gap-1">
+                      🔗 ニュース元を読む
+                    </a>
                   </div>
-                </li>
-              ))}
-            </ul>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ y: -3 }}
-            transition={{ type: "spring", stiffness: 260, damping: 22 }}
-            className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
-          >
-            <div className="flex items-center gap-2 text-[#D4AF37] font-extrabold mb-3">
-              <Play size={18} />
-              <span className="text-sm">おすすめ動画（YouTube）</span>
-            </div>
-
-            <div className="aspect-[16/9] w-full bg-zinc-50 rounded-xl relative overflow-hidden border border-gray-200">
-              <img src={videoImg} alt="動画サムネイル" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-black/5" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="h-14 w-14 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/30 flex items-center justify-center transition-transform duration-200 hover:scale-110">
-                  <Play size={24} color="#D4AF37" />
                 </div>
               </div>
-            </div>
 
-            <div className="mt-4 text-[#D4AF37] font-extrabold">トップセールスが語る『AI使いこなし術』</div>
-          </motion.div>
-        </aside>
+              <div className="relative backdrop-blur-md bg-blue-950/20 border border-blue-500/10 p-5 rounded-2xl mb-6 shadow-inner">
+                <p className="text-[10px] text-blue-400 font-black mb-2 flex items-center gap-1.5 tracking-[0.2em] uppercase">
+                  <span className="animate-pulse">🔥</span> Today&apos;s Weapon
+                </p>
+                <p className="text-[15px] font-bold text-white tracking-wide leading-relaxed italic">
+                  {news.doyaWord}
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-white/[0.03]">
+                <button 
+                  onClick={(e) => handleCopy(e, news.doyaWord, news.id)}
+                  className={`flex items-center gap-3 px-6 py-4 rounded-2xl text-sm font-black transition-all duration-300 w-full justify-center shadow-lg active:scale-95 ${
+                    copiedId === news.id ? 'bg-emerald-600 text-white shadow-emerald-500/30' : 'bg-gradient-to-b from-blue-600 to-blue-700 text-white border border-blue-500/30'
+                  }`}
+                >
+                  {copiedId === news.id ? '✓ COPIED TO WEAPON!' : '📋 コピーして武器にする'}
+                </button>
+              </div>
+              
+              <div className="mt-3 text-center">
+                <span className="text-[9px] text-gray-700 font-bold tracking-[0.3em] uppercase">
+                  {expandedId === news.id ? '↑ Tap to collapse' : '↓ Tap to read more'}
+                </span>
+              </div>
+            </article>
+          ))}
+        </div>
       </main>
     </div>
   );
 }
-
