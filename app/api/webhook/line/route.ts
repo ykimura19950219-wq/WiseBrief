@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
-import { generateNewsItems } from "../../news/generate/route";
+import { generateNewsItems } from "@/lib/dailyBrief";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -4,3 +4,6 @@ node_modules
 .env
 .env.*
 
+# 日次ブリーフのキャッシュ（/api/daily-brief が生成）
+/data/last-daily-brief.json
+
