@@ -12,8 +12,14 @@ export type WiseBriefItem = {
   key: WiseBriefCategoryKey;
   label: string; // カテゴリ（表示には使わないこともある）
   newsTitle: string;
-  summary: string;
+  summary: string; // ニュース概要（カード表示用）
+  background: string;
+  current: string;
+  forecast: string;
   doyaWord: string;
+  // フロント側で「3つのドヤ顔ワード」を表示したい場合のための拡張。
+  // 従来互換のため任意にしている。
+  doyaWords?: string[];
   youtubeUrl: string;
   sources: WiseBriefSource[];
 };
@@ -61,8 +67,8 @@ const CATEGORY_QUERIES: Record<
 export async function getTodaysWiseBrief(dateKey: string): Promise<WiseBriefItem[]> {
   const categories = Object.keys(CATEGORY_QUERIES) as WiseBriefCategoryKey[];
 
-  function deriveTitleFromSummary(summary: string) {
-    const s = normalizeWhitespace(summary);
+  function deriveTitleFromSummary(text: string) {
+    const s = normalizeWhitespace(text);
     // 先頭の短いフレーズを見出し相当にする（日本語の「。」区切りを優先）
     const first = s.split("。")[0] ?? s;
     const trimmed = first.trim();
@@ -77,14 +83,22 @@ export async function getTodaysWiseBrief(dateKey: string): Promise<WiseBriefItem
 
       try {
         const answerInstruction =
-          "次の検索結果を日本語だけで要約してください。出力はJSONのみでキーはsummaryとwhyです。summaryは3行以内、whyは商談でそのまま喋れる一文です。半角英字（A-Z/a-z）を含めないでください。";
+          "次の検索結果を元に、日本語だけで再構成してください。出力はJSONのみ。\n" +
+          "まず深く考え、そこから商談でそのまま読める文章に短く整形してください。\n" +
+          'キーは "ニュースの核心","メリット（凄さ）","ドヤ顔ワード","商談での刺し方（活用法）","用語解説" の5つだけ。\n' +
+          '"ニュースの核心" はカード用の要点で、最大3行に収めてください。\n' +
+          '"メリット（凄さ）" は「何がどれだけ良くなるか」を1つに絞り、2〜3文で説明してください（数字は捏造しない）。\n' +
+          '"ドヤ顔ワード" は商談で刺さる一言（1文）として作成してください。\n' +
+          '"商談での刺し方（活用法）" は相手の業界を1つ選び（製造/営業/事務/開発/経営/その他）、その業界での具体的なメリットを1つ提案してください。専門用語は中学生に教えるつもりで噛み砕いて、3〜5文で。\n' +
+          '"用語解説" は本文内の専門用語を1つに絞って、中学生に教えるつもりで噛み砕いて2〜3文で説明してください。\n' +
+          "半角英字（A-Z/a-z）を含めないでください。英語の略語も日本語に言い換えてください。";
 
-        const queryForAnswer = `${cfg.searchQuery}\n\n${answerInstruction}`;
+        const queryForAnswer = `${cfg.searchQuery}\n\n${answerInstruction}\n\n出力JSONの形式: {"ニュースの核心":"...","メリット（凄さ）":"...","ドヤ顔ワード":"...","商談での刺し方（活用法）":"...","用語解説":"..."}`;
 
         const { answer, results } = await tavilySearch({
           query: queryForAnswer,
-          maxResults: 8,
-          searchDepth: "advanced",
+          maxResults: 6,
+          searchDepth: "fast",
           includeAnswer: "advanced",
           timeRange: "day",
           topic: "news"
@@ -102,27 +116,38 @@ export async function getTodaysWiseBrief(dateKey: string): Promise<WiseBriefItem
           language: "ja"
         });
 
-        const summary = normalizeWhitespace(brief.summary);
-        const newsTitle = deriveTitleFromSummary(summary);
+        // LLMのJSON5項目（日本語キー）を、UI互換の内部フィールドへマッピング
+        const core = normalizeWhitespace(brief.overview);
+        const newsTitle = deriveTitleFromSummary(core);
         const doyaWord = normalizeWhitespace(brief.why);
+        const merit = normalizeWhitespace(brief.background);
+        const usage = normalizeWhitespace(brief.current);
+        const glossary = normalizeWhitespace(brief.forecast);
         const youtubeUrl = pickYoutubeUrl(results, cfg.youtubeQuery);
 
         return {
           key,
           label: cfg.label,
           newsTitle,
-          summary: summary || "要約を作成できませんでした。",
+          summary: core || "ニュースの核心を整理しました。",
+          background: merit,
+          current: usage,
+          forecast: glossary,
           doyaWord,
           youtubeUrl,
           sources
         };
       } catch (e) {
+        const fallbackNewsTitle = cfg?.label ? `要点：${cfg.label}` : "要点";
         return {
           key,
           label: cfg.label,
-          newsTitle: "要約を準備中",
-          summary: "要約を生成できませんでした。少し時間をおいて再読み込みしてください。",
-          doyaWord: "このポイントは『ここが勝ち筋です』と一言でまとめましょう。",
+          newsTitle: fallbackNewsTitle,
+          summary: "ニュースの核心を整理しました。カードの内容は再生成される場合があります。",
+          background: "この話のメリットは、会話の次の一手が決まりやすくなる点です。",
+          current: "商談の刺し方は、相手の業界に合わせて「何が良くなるか」を先に揃えて話すことです。",
+          forecast: "用語解説は、難しい言葉を噛み砕いて意味と使いどころを一言で伝えることです。",
+          doyaWord: "この一言で、話が次の段階へ進みます。",
           youtubeUrl: pickYoutubeUrl([], cfg.youtubeQuery),
           sources: []
         };

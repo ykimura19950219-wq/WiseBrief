@@ -31,6 +31,7 @@ export async function tavilySearch(params: {
   const res = await fetch(TAVILY_SEARCH_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    cache: "no-store",
     body: JSON.stringify({
       api_key: apiKey,
       query: params.query,

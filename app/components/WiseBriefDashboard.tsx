@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import type { WiseBriefCategoryKey, WiseBriefItem } from "../../lib/wisebrief";
+import type { WiseBriefCategoryKey, WiseBriefItem } from "@/lib/wisebrief";
 
 function SourceIcon() {
   return (
@@ -166,7 +166,7 @@ export default function WiseBriefDashboard({
         </h1>
       </header>
 
-      <main className="mx-auto mt-10 max-w-5xl space-y-6">
+      <main className="mx-auto mt-10 max-w-5xl space-y-8">
         {items.map((item, idx) => {
           const delay = idx * 180;
 
@@ -177,15 +177,21 @@ export default function WiseBriefDashboard({
               <article
                 key={item.key}
                 style={{ animationDelay: `${delay}ms` }}
+                onClick={() => setActiveSourceKey(item.key)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") setActiveSourceKey(item.key);
+                }}
                 className={[
-                  "wisebrief-rise relative overflow-hidden rounded-[24px] border border-white/10 bg-[#0d0d0d] px-12 py-12",
-                  "transition-transform duration-300 hover:scale-[1.01] hover:shadow-[0_0_0_1px_rgba(34,211,238,0.10),0_22px_70px_rgba(0,0,0,0.7)]"
+                  "wisebrief-rise relative overflow-hidden rounded-[24px] border-[0.5px] border-white/5 bg-[#111111] px-14 py-14",
+                  "cursor-pointer transition-transform duration-300 hover:scale-[1.01] hover:shadow-[0_0_0_1px_rgba(34,211,238,0.12),0_24px_80px_rgba(0,0,0,0.6)]"
                 ].join(" ")}
               >
                 <div className="flex items-start justify-between gap-8">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-white/50">ニュース概要</div>
-                    <h2 className="mt-3 text-[30px] font-extrabold leading-[1.1] tracking-tight text-white">
+                    <h2 className="mt-3 break-words text-[30px] font-extrabold leading-[1.08] tracking-tight text-white">
                       {item.newsTitle}
                     </h2>
                     <p
@@ -218,7 +224,7 @@ export default function WiseBriefDashboard({
                   <button
                     type="button"
                     onClick={() => setActiveSourceKey(item.key)}
-                    className="inline-flex items-center gap-2 rounded-[16px] border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white/85 transition hover:bg-white/10 hover:text-white"
+                    className="inline-flex items-center gap-2 rounded-[16px] border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white/90 transition hover:bg-white/10 hover:text-white"
                   >
                     <span aria-hidden="true">🔗</span>
                     ソースを確認
@@ -231,14 +237,14 @@ export default function WiseBriefDashboard({
                   key={`affiliate-${item.key}`}
                   style={{ animationDelay: `${delay + 120}ms` }}
                   className={[
-                    "wisebrief-rise relative overflow-hidden rounded-[24px] border border-[#D4AF37]/40 bg-[#0d0d0d] px-12 py-12"
+                    "wisebrief-rise relative overflow-hidden rounded-[24px] border-[0.5px] border-[#D4AF37]/35 bg-[#0d0d0d] px-14 py-14"
                   ].join(" ")}
                 >
                   <div className="text-sm font-semibold tracking-[0.14em] text-[#D4AF37]">
-                    今週の厳選人工知能ツール
+                    編集部のおすすめ
                   </div>
                   <h2 className="mt-3 text-[30px] font-extrabold leading-[1.1] tracking-tight text-white">
-                    成約を加速する“置き換え”だけを集める
+                    今週の厳選AIツール（商談を前に進めるやつだけ）
                   </h2>
 
                   <div className="mt-7 space-y-3">
@@ -249,10 +255,10 @@ export default function WiseBriefDashboard({
                     ].map((t, i) => (
                       <div
                         key={i}
-                        className="flex items-center justify-between rounded-[16px] border border-[#D4AF37]/25 bg-white/5 px-5 py-4"
+                        className="flex items-center justify-between rounded-[16px] border border-[#D4AF37]/20 bg-white/5 px-5 py-4"
                       >
                         <div className="text-white/85 text-[16px] font-semibold">{t}</div>
-                        <div className="text-[#D4AF37] font-extrabold">おすすめ</div>
+                        <div className="text-[#D4AF37] font-extrabold">推し</div>
                       </div>
                     ))}
                   </div>
@@ -265,7 +271,7 @@ export default function WiseBriefDashboard({
                         // ダミー（アフィリ導線は後で差し替え）
                       }}
                     >
-                      今週のツールをチェック（ダミー）
+                      編集部のおすすめを開く（ダミー）
                     </button>
                   </div>
                 </article>
@@ -274,6 +280,22 @@ export default function WiseBriefDashboard({
           );
         })}
       </main>
+
+      <div className="mx-auto mt-10 max-w-5xl flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <a
+          href="#"
+          className="inline-flex items-center justify-center rounded-[16px] border border-white/10 bg-white/5 px-7 py-3 text-sm font-semibold text-white/90 transition hover:bg-white/10 hover:text-white"
+          onClick={(e) => e.preventDefault()}
+        >
+          もっと見る（ダミー）
+        </a>
+        <a
+          href="/archive"
+          className="inline-flex items-center justify-center rounded-[16px] border border-[#22d3ee]/25 bg-[#22d3ee]/10 px-7 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-[#22d3ee]/20"
+        >
+          過去のニュース
+        </a>
+      </div>
 
       {activeItem ? (
         <div
@@ -284,24 +306,61 @@ export default function WiseBriefDashboard({
             if (e.target === e.currentTarget) setActiveSourceKey(null);
           }}
         >
-          <div className="w-full max-w-2xl rounded-[24px] border border-white/10 bg-[#0d0d0d] p-6 lg:p-8">
+          <div className="wisebrief-modal-in w-full max-w-3xl rounded-[24px] border-[0.5px] border-white/10 bg-[#0d0d0d] p-6 lg:p-10 shadow-[0_30px_120px_rgba(0,0,0,0.75)]">
             <div className="flex items-start justify-between gap-6">
               <div>
-                <div className="text-sm font-semibold text-white/50">出典・確認</div>
-                <div className="mt-2 text-[20px] font-extrabold text-white">
+                <div className="text-sm font-semibold text-white/55">詳細</div>
+                <div className="mt-2 break-words text-[22px] font-extrabold leading-tight text-white">
                   {activeItem.newsTitle}
                 </div>
               </div>
               <button
                 type="button"
-                className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+                className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 transition hover:bg-white/10 hover:text-white"
                 onClick={() => setActiveSourceKey(null)}
               >
                 閉じる
               </button>
             </div>
 
-            <div className="mt-6 text-sm font-semibold text-white/60">出典（上位）</div>
+            <div className="mt-7 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-[18px] border border-white/10 bg-black/20 p-5">
+                <div className="text-sm font-semibold text-white/60">ニュース概要（短く要点だけ）</div>
+                <div className="mt-3 text-[16px] leading-relaxed text-white/85 whitespace-pre-line">
+                  {activeItem.summary}
+                </div>
+              </div>
+
+              <div className="rounded-[18px] border border-white/10 bg-black/20 p-5">
+                <div className="text-sm font-semibold text-white/60">💡 商談で使えるドヤ顔ワード</div>
+                <div className="mt-3 border-l-4 border-[#22d3ee] pl-4 text-[18px] font-extrabold leading-relaxed text-white drop-shadow-[0_0_18px_rgba(34,211,238,0.22)]">
+                  「{activeItem.doyaWord}」
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-3">
+              <div className="rounded-[18px] border border-white/10 bg-[#111111] p-5">
+                <div className="text-sm font-semibold text-white/70">背景</div>
+                <div className="mt-3 text-[16px] leading-relaxed text-white/85 whitespace-pre-line">
+                  {activeItem.background}
+                </div>
+              </div>
+              <div className="rounded-[18px] border border-white/10 bg-[#111111] p-5">
+                <div className="text-sm font-semibold text-white/70">現状</div>
+                <div className="mt-3 text-[16px] leading-relaxed text-white/85 whitespace-pre-line">
+                  {activeItem.current}
+                </div>
+              </div>
+              <div className="rounded-[18px] border border-[#22d3ee]/20 bg-[#0f0f0f] p-5">
+                <div className="text-sm font-semibold text-cyan-100">今後予測</div>
+                <div className="mt-3 text-[16px] leading-relaxed text-white/85 whitespace-pre-line">
+                  {activeItem.forecast}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-7 text-sm font-semibold text-white/60">出典（上位）</div>
             <div className="mt-4 space-y-3">
               {activeItem.sources.slice(0, 3).map((s, i) => {
                 const label = sanitizeForDisplay(s.title);
