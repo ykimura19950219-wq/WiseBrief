@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getSupabaseClient, getSupabaseDiagnostics } from "@/lib/supabase";
+import { assertSupabaseEnv, getSupabaseClient, getSupabaseDiagnostics } from "@/lib/supabase";
 
 export type LineNewsItem = {
   事実: string;
@@ -555,6 +555,7 @@ export async function persistDailyBrief(items: DailyBriefItem[]): Promise<void> 
     toDailyBriefRow({ ...item, id: idx + 1 }, createdAt)
   );
 
+  assertSupabaseEnv();
   const supabase = getSupabaseClient();
   try {
     const { error } = await supabase
@@ -574,8 +575,10 @@ export async function persistDailyBrief(items: DailyBriefItem[]): Promise<void> 
   } catch (e) {
     const diag = getSupabaseDiagnostics();
     const message = e instanceof Error ? e.message : String(e);
+    const cause = e instanceof Error ? e.cause : undefined;
     console.error("[dailyBrief] supabase upsert exception", {
       message,
+      cause,
       diagnostics: diag
     });
     throw new Error(`Supabase upsert exception: ${message}`);
@@ -583,6 +586,7 @@ export async function persistDailyBrief(items: DailyBriefItem[]): Promise<void> 
 }
 
 export async function loadPersistedDailyBrief(): Promise<DailyBriefItem[] | null> {
+  assertSupabaseEnv();
   const supabase = getSupabaseClient();
   try {
     const { data, error } = await supabase
@@ -622,8 +626,10 @@ export async function loadPersistedDailyBrief(): Promise<DailyBriefItem[] | null
   } catch (e) {
     const diag = getSupabaseDiagnostics();
     const message = e instanceof Error ? e.message : String(e);
+    const cause = e instanceof Error ? e.cause : undefined;
     console.error("[dailyBrief] supabase select exception", {
       message,
+      cause,
       diagnostics: diag
     });
     throw new Error(`Supabase select exception: ${message}`);

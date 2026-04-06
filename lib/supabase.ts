@@ -1,8 +1,7 @@
 import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
-
-let cached: ReturnType<typeof createClient> | null = null;
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 function mask(value: string) {
   if (!value) return "(empty)";
@@ -19,8 +18,8 @@ function safeHost(url: string) {
 }
 
 export function getSupabaseDiagnostics() {
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const anon = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
   const usingServiceRole = Boolean(serviceRole);
   const key = serviceRole || anon;
@@ -34,25 +33,38 @@ export function getSupabaseDiagnostics() {
   };
 }
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const supabaseKey = serviceRoleKey || supabaseAnonKey;
+
+let cached: SupabaseClient | null = null;
+
+export function assertSupabaseEnv() {
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+      "Supabase env is missing: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_SERVICE_ROLE_KEY)"
+    );
+  }
+}
+
 export function getSupabaseClient() {
   if (cached) return cached;
-
-  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-  const supabaseKey = serviceRoleKey || supabaseAnonKey;
   if (!supabaseUrl || !supabaseKey) {
     const d = getSupabaseDiagnostics();
     console.error("[supabase] env missing", d);
-    throw new Error(
-      "Supabase env is missing: SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY/NEXT_PUBLIC_SUPABASE_ANON_KEY"
-    );
+    assertSupabaseEnv();
   }
 
   cached = createClient(supabaseUrl, supabaseKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    },
     global: {
-      fetch: (...args) => fetch(...args),
+      // Node.js組み込みfetch差異の影響を減らすため、明示的にfetchを渡す
+      fetch: (url, options) => fetch(url, { ...options, cache: "no-store" }),
       headers: { "X-Client-Info": "wisebrief-server" }
     }
   });
