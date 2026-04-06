@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getSupabaseClient } from "@/lib/supabase";
+import { getSupabaseClient, getSupabaseDiagnostics } from "@/lib/supabase";
 
 export type LineNewsItem = {
   事実: string;
@@ -556,42 +556,76 @@ export async function persistDailyBrief(items: DailyBriefItem[]): Promise<void> 
   );
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase
-    .from("daily_briefs")
-    .upsert(rows as never, { onConflict: "id" });
+  try {
+    const { error } = await supabase
+      .from("daily_briefs")
+      .upsert(rows as never, { onConflict: "id" });
 
-  if (error) {
-    throw new Error(`Supabase upsert failed: ${error.message}`);
+    if (error) {
+      const diag = getSupabaseDiagnostics();
+      console.error("[dailyBrief] supabase upsert error", {
+        message: error.message,
+        hint: error.hint,
+        details: error.details,
+        diagnostics: diag
+      });
+      throw new Error(`Supabase upsert failed: ${error.message}`);
+    }
+  } catch (e) {
+    const diag = getSupabaseDiagnostics();
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[dailyBrief] supabase upsert exception", {
+      message,
+      diagnostics: diag
+    });
+    throw new Error(`Supabase upsert exception: ${message}`);
   }
 }
 
 export async function loadPersistedDailyBrief(): Promise<DailyBriefItem[] | null> {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from("daily_briefs")
-    .select("id, category, title, summary, details, doya_word, job_impact, url, created_at")
-    .order("created_at", { ascending: false })
-    .limit(TARGET);
+  try {
+    const { data, error } = await supabase
+      .from("daily_briefs")
+      .select("id, category, title, summary, details, doya_word, job_impact, url, created_at")
+      .order("created_at", { ascending: false })
+      .limit(TARGET);
 
-  if (error) {
-    throw new Error(`Supabase select failed: ${error.message}`);
-  }
-  if (!data?.length) {
-    return null;
-  }
+    if (error) {
+      const diag = getSupabaseDiagnostics();
+      console.error("[dailyBrief] supabase select error", {
+        message: error.message,
+        hint: error.hint,
+        details: error.details,
+        diagnostics: diag
+      });
+      throw new Error(`Supabase select failed: ${error.message}`);
+    }
+    if (!data?.length) {
+      return null;
+    }
 
-  return (data as DailyBriefRow[])
-    .sort((a, b) => a.id - b.id)
-    .map((row) => ({
-    id: row.id,
-    category: row.category,
-    title: row.title,
-    summary: row.summary,
-    details: row.details,
-    doyaWord: row.doya_word,
-    jobImpact: row.job_impact ?? undefined,
-    url: row.url,
-    time: "本日",
-    icon: iconForCategory(row.category)
-    }));
+    return (data as DailyBriefRow[])
+      .sort((a, b) => a.id - b.id)
+      .map((row) => ({
+        id: row.id,
+        category: row.category,
+        title: row.title,
+        summary: row.summary,
+        details: row.details,
+        doyaWord: row.doya_word,
+        jobImpact: row.job_impact ?? undefined,
+        url: row.url,
+        time: "本日",
+        icon: iconForCategory(row.category)
+      }));
+  } catch (e) {
+    const diag = getSupabaseDiagnostics();
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[dailyBrief] supabase select exception", {
+      message,
+      diagnostics: diag
+    });
+    throw new Error(`Supabase select exception: ${message}`);
+  }
 }
