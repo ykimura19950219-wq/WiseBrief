@@ -51,7 +51,10 @@ export function getSupabaseClient() {
 
   cached = createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    global: { headers: { "X-Client-Info": "wisebrief-server" } }
+    global: {
+      fetch: (...args) => fetch(...args),
+      headers: { "X-Client-Info": "wisebrief-server" }
+    }
   });
   return cached;
 }

@@ -42,7 +42,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, count: items.length, items }, { status: 200 });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    console.error("[daily-brief]", e);
+    const errorDetail =
+      e instanceof Error
+        ? {
+            name: e.name,
+            message: e.message,
+            stack: e.stack,
+            cause: e.cause
+          }
+        : e;
+
+    console.error("[daily-brief] pipeline failed", {
+      message,
+      errorDetail
+    });
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
