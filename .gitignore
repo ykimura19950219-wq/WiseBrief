@@ -3,7 +3,3 @@ node_modules
 .env.local
 .env
 .env.*
-
-# 日次ブリーフのキャッシュ（/api/daily-brief が生成）
-/data/last-daily-brief.json
-

@@ -1,7 +1,6 @@
 import "server-only";
 
-import fs from "node:fs/promises";
-import path from "node:path";
+import { getSupabaseClient } from "@/lib/supabase";
 
 export type LineNewsItem = {
   事実: string;
@@ -22,6 +21,18 @@ export type DailyBriefItem = {
   url: string;
   time: string;
   icon: string;
+};
+
+type DailyBriefRow = {
+  id: number;
+  category: string;
+  title: string;
+  summary: string;
+  details: string;
+  doya_word: string;
+  job_impact: string | null;
+  url: string;
+  created_at: string;
 };
 
 type RawNews = {
@@ -521,20 +532,66 @@ export async function generateNewsItems(): Promise<LineNewsItem[]> {
   return dailyBriefToLineItems(brief);
 }
 
-const BRIEF_FILE = path.join(process.cwd(), "data", "last-daily-brief.json");
+function toDailyBriefRow(item: DailyBriefItem, createdAt: string): DailyBriefRow {
+  return {
+    id: item.id,
+    category: item.category,
+    title: item.title,
+    summary: item.summary,
+    details: item.details,
+    doya_word: item.doyaWord,
+    job_impact: item.jobImpact ?? null,
+    url: item.url,
+    created_at: createdAt
+  };
+}
 
 export async function persistDailyBrief(items: DailyBriefItem[]): Promise<void> {
-  await fs.mkdir(path.dirname(BRIEF_FILE), { recursive: true });
-  await fs.writeFile(BRIEF_FILE, JSON.stringify({ updatedAt: new Date().toISOString(), items }, null, 2), "utf-8");
+  if (items.length !== TARGET) {
+    throw new Error(`保存対象は${TARGET}件固定です（現在 ${items.length} 件）`);
+  }
+  const createdAt = new Date().toISOString();
+  const rows = items.slice(0, TARGET).map((item, idx) =>
+    toDailyBriefRow({ ...item, id: idx + 1 }, createdAt)
+  );
+
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from("daily_briefs")
+    .upsert(rows as never, { onConflict: "id" });
+
+  if (error) {
+    throw new Error(`Supabase upsert failed: ${error.message}`);
+  }
 }
 
 export async function loadPersistedDailyBrief(): Promise<DailyBriefItem[] | null> {
-  try {
-    const raw = await fs.readFile(BRIEF_FILE, "utf-8");
-    const data = JSON.parse(raw) as { items?: DailyBriefItem[] };
-    if (!Array.isArray(data.items) || data.items.length === 0) return null;
-    return data.items.slice(0, TARGET);
-  } catch {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("daily_briefs")
+    .select("id, category, title, summary, details, doya_word, job_impact, url, created_at")
+    .order("created_at", { ascending: false })
+    .limit(TARGET);
+
+  if (error) {
+    throw new Error(`Supabase select failed: ${error.message}`);
+  }
+  if (!data?.length) {
     return null;
   }
+
+  return (data as DailyBriefRow[])
+    .sort((a, b) => a.id - b.id)
+    .map((row) => ({
+    id: row.id,
+    category: row.category,
+    title: row.title,
+    summary: row.summary,
+    details: row.details,
+    doyaWord: row.doya_word,
+    jobImpact: row.job_impact ?? undefined,
+    url: row.url,
+    time: "本日",
+    icon: iconForCategory(row.category)
+    }));
 }

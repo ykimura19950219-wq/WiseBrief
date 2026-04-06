@@ -7,8 +7,9 @@
     "start": "next start"
   },
   "dependencies": {
-    "lucide-react": "^0.577.0",
+    "@supabase/supabase-js": "^2.101.1",
     "framer-motion": "*",
+    "lucide-react": "^0.577.0",
     "next": "*",
     "react": "*",
     "react-dom": "*"
