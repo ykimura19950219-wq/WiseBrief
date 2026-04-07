@@ -94,23 +94,106 @@ export type DailyBriefUpsertRow = {
   created_at: string;
 };
 
+const MAX_ERROR_DEPTH = 8;
+
+/** fetch 失敗時に cause / code 等をログ用に再帰展開（循環は深さで打ち切り） */
+function serializeUnknownForLog(value: unknown, depth = 0): unknown {
+  if (depth > MAX_ERROR_DEPTH) return { truncated: true };
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (value instanceof Error) {
+    const e = value as Error &
+      NodeJS.ErrnoException & { hostname?: string; address?: string; port?: number };
+    const base: Record<string, unknown> = {
+      type: "Error",
+      name: e.name,
+      message: e.message,
+      stack: e.stack
+    };
+    if (e.code !== undefined) base.code = e.code;
+    if (e.errno !== undefined) base.errno = e.errno;
+    if (e.syscall !== undefined) base.syscall = e.syscall;
+    if (e.hostname !== undefined) base.hostname = e.hostname;
+    if (e.address !== undefined) base.address = e.address;
+    if (e.port !== undefined) base.port = e.port;
+    for (const key of Object.getOwnPropertyNames(e)) {
+      if (["name", "message", "stack", "cause"].includes(key)) continue;
+      try {
+        const v = (e as unknown as Record<string, unknown>)[key];
+        if (typeof v === "function") continue;
+        base[key] =
+          v !== null && typeof v === "object" ? serializeUnknownForLog(v, depth + 1) : v;
+      } catch {
+        base[key] = "(unreadable)";
+      }
+    }
+    if (e.cause !== undefined) {
+      base.cause = serializeUnknownForLog(e.cause, depth + 1);
+    }
+    return base;
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return { type: "object", stringified: String(value) };
+    }
+  }
+  return String(value);
+}
+
 export async function supabaseUpsert(rows: DailyBriefUpsertRow[]): Promise<void> {
   assertSupabaseEnv();
   const base = supabaseUrl.replace(/\/+$/, "");
   const endpoint = `${base}/rest/v1/daily_briefs?on_conflict=id`;
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: supabaseKey,
-      Authorization: `Bearer ${supabaseKey}`,
-      Prefer: "resolution=merge-duplicates",
-      Accept: "application/json"
-    },
-    body: JSON.stringify(rows),
-    cache: "no-store"
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    apikey: supabaseKey,
+    Authorization: `Bearer ${supabaseKey}`,
+    Prefer: "resolution=merge-duplicates",
+    Accept: "application/json"
+  };
+
+  const headersForLog = {
+    ...headers,
+    apikey: mask(supabaseKey),
+    Authorization: `Bearer ${mask(supabaseKey)}`
+  };
+
+  console.log(
+    "[supabaseUpsert] about to fetch",
+    JSON.stringify(
+      {
+        url: endpoint,
+        method: "POST",
+        headers: headersForLog,
+        bodyBytes: Buffer.byteLength(JSON.stringify(rows), "utf8"),
+        rowCount: rows.length
+      },
+      null,
+      2
+    )
+  );
+
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(rows),
+      cache: "no-store"
+    });
+  } catch (e) {
+    const serialized = serializeUnknownForLog(e);
+    console.error(
+      "[supabaseUpsert] fetch threw (full dump)",
+      JSON.stringify({ error: serialized }, null, 2)
+    );
+    throw e;
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
