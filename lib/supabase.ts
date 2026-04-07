@@ -1,7 +1,13 @@
 import "server-only";
 
+import dns from "node:dns";
+
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetch as undiciFetch } from "undici";
+
+/** Render 等で IPv6 が先に選ばれて失敗するケースを避ける */
+dns.setDefaultResultOrder("ipv4first");
 
 function mask(value: string) {
   if (!value) return "(empty)";
@@ -63,8 +69,12 @@ export function getSupabaseClient() {
       detectSessionInUrl: false
     },
     global: {
-      // Node.js組み込みfetch差異の影響を減らすため、明示的にfetchを渡す
-      fetch: (url, options) => fetch(url, { ...options, cache: "no-store" }),
+      // 内蔵 fetch 経路を避け、undici + IPv4 優先 DNS で接続
+      fetch: async (url, init) =>
+        (await undiciFetch(url as never, {
+          ...(init ?? {}),
+          cache: "no-store"
+        } as never)) as unknown as Response,
       headers: { "X-Client-Info": "wisebrief-server" }
     }
   });

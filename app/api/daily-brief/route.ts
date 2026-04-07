@@ -9,6 +9,42 @@ export const maxDuration = 300;
 
 const APP_URL = "https://wisebrief.onrender.com";
 
+const MAX_CAUSE_DEPTH = 8;
+
+function serializeCause(value: unknown, depth = 0): unknown {
+  if (depth > MAX_CAUSE_DEPTH) return { truncated: true };
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (value instanceof Error) {
+    const err = value as Error &
+      NodeJS.ErrnoException & { address?: string; port?: number; hostname?: string };
+    return {
+      type: "Error",
+      name: err.name,
+      message: err.message,
+      code: err.code,
+      errno: err.errno,
+      syscall: err.syscall,
+      hostname: err.hostname,
+      address: err.address,
+      port: err.port,
+      stack: err.stack,
+      cause: err.cause !== undefined ? serializeCause(err.cause, depth + 1) : undefined
+    };
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return { type: typeof value, value: String(value) };
+    }
+  }
+  return String(value);
+}
+
 function authorize(req: Request): boolean {
   const secret = process.env.DAILY_BRIEF_SECRET ?? process.env.CRON_SECRET ?? "";
   if (!secret) return true;
@@ -42,13 +78,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, count: items.length, items }, { status: 200 });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    const causeSerialized = e instanceof Error ? serializeCause(e.cause) : serializeCause(e);
+
     const errorDetail =
       e instanceof Error
         ? {
             name: e.name,
             message: e.message,
             stack: e.stack,
-            cause: e.cause
+            cause: causeSerialized
           }
         : e;
 
@@ -56,7 +94,15 @@ export async function POST(req: Request) {
       message,
       errorDetail
     });
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+        cause: causeSerialized
+      },
+      { status: 500 }
+    );
   }
 }
 
