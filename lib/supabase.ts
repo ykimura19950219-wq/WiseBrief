@@ -80,3 +80,40 @@ export function getSupabaseClient() {
   });
   return cached;
 }
+
+/** PostgREST upsert（SDKを経由しない直接通信） */
+export type DailyBriefUpsertRow = {
+  id: number;
+  category: string;
+  title: string;
+  summary: string;
+  details: string;
+  doya_word: string;
+  job_impact: string | null;
+  url: string;
+  created_at: string;
+};
+
+export async function supabaseUpsert(rows: DailyBriefUpsertRow[]): Promise<void> {
+  assertSupabaseEnv();
+  const base = supabaseUrl.replace(/\/+$/, "");
+  const endpoint = `${base}/rest/v1/daily_briefs?on_conflict=id`;
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      Prefer: "resolution=merge-duplicates",
+      Accept: "application/json"
+    },
+    body: JSON.stringify(rows),
+    cache: "no-store"
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase REST upsert failed: ${res.status} ${text}`.slice(0, 500));
+  }
+}

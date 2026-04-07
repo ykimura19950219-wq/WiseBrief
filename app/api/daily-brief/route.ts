@@ -59,6 +59,7 @@ async function runPipeline() {
   if (items.length !== 5) {
     throw new Error(`想定5件ですが ${items.length} 件しか生成できませんでした`);
   }
+  // Supabase 保存: SDK ではなく lib/supabase.ts の supabaseUpsert（PostgREST 直叩き）
   await persistDailyBrief(items);
 
   const lineBody =

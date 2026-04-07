@@ -1,6 +1,11 @@
 import "server-only";
 
-import { assertSupabaseEnv, getSupabaseClient, getSupabaseDiagnostics } from "@/lib/supabase";
+import {
+  assertSupabaseEnv,
+  getSupabaseClient,
+  getSupabaseDiagnostics,
+  supabaseUpsert
+} from "@/lib/supabase";
 
 export type LineNewsItem = {
   事実: string;
@@ -556,22 +561,8 @@ export async function persistDailyBrief(items: DailyBriefItem[]): Promise<void> 
   );
 
   assertSupabaseEnv();
-  const supabase = getSupabaseClient();
   try {
-    const { error } = await supabase
-      .from("daily_briefs")
-      .upsert(rows as never, { onConflict: "id" });
-
-    if (error) {
-      const diag = getSupabaseDiagnostics();
-      console.error("[dailyBrief] supabase upsert error", {
-        message: error.message,
-        hint: error.hint,
-        details: error.details,
-        diagnostics: diag
-      });
-      throw new Error(`Supabase upsert failed: ${error.message}`);
-    }
+    await supabaseUpsert(rows);
   } catch (e) {
     const diag = getSupabaseDiagnostics();
     const message = e instanceof Error ? e.message : String(e);
