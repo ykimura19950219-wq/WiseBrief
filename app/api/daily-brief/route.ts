@@ -54,6 +54,44 @@ function authorize(req: Request): boolean {
   return bearer === secret || header === secret;
 }
 
+/** SDK を介さず PostgREST への極小通信（DNS / TLS / キー検証用） */
+async function runSupabaseMinimalRestTest() {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  if (!base || !anon) {
+    console.error(
+      "[daily-brief] minimal REST test skipped: NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY missing"
+    );
+    return;
+  }
+
+  const testUrl = `${base.replace(/\/+$/, "")}/rest/v1/daily_briefs?select=*`;
+  try {
+    const testRes = await fetch(testUrl, {
+      headers: {
+        apikey: anon,
+        Authorization: `Bearer ${anon}`
+      },
+      cache: "no-store"
+    });
+    console.log("TEST_STATUS:", testRes.status);
+  } catch (err) {
+    const cause = err instanceof Error ? err.cause : undefined;
+    console.error(
+      "[daily-brief] minimal REST test fetch failed",
+      JSON.stringify(
+        {
+          cause: cause !== undefined ? serializeCause(cause) : undefined,
+          error: err instanceof Error ? serializeCause(err) : String(err)
+        },
+        null,
+        2
+      )
+    );
+    throw err;
+  }
+}
+
 async function runPipeline() {
   const items = await generateDailyBriefItems();
   if (items.length !== 5) {
@@ -75,6 +113,7 @@ export async function POST(req: Request) {
   }
 
   try {
+    await runSupabaseMinimalRestTest();
     const items = await runPipeline();
     return NextResponse.json({ ok: true, count: items.length, items }, { status: 200 });
   } catch (e) {
