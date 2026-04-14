@@ -4,8 +4,11 @@ import {
   assertSupabaseEnv,
   getSupabaseClient,
   getSupabaseDiagnostics,
+  getRawSearchCache,
+  saveRawSearchCache,
   supabaseUpsert
 } from "@/lib/supabase";
+import { generateGroundedNewsItems } from "@/lib/geminiNews";
 
 export type LineNewsItem = {
   事実: string;
@@ -91,27 +94,18 @@ function buildQueries(afterToday: string, afterYesterday: string) {
   const exclude = "-年収 -給与 -初任給 -ランキング";
   return {
     split: { work: 3, urgent: 2 },
-    queries: {
-      workToday: [
-        `(エンジニア採用 OR DX推進 OR AI導入) after:${afterToday} ${exclude}`,
-        `(IT企業 OR DX推進) (業務提携 OR 新サービス発表 OR 資金調達) after:${afterToday} site:prtimes.jp ${exclude}`
-      ],
-      urgentToday: [
-        `(日経平均株価 OR 為替介入 OR 円安) after:${afterToday}`,
-        `(デジタル庁 発表 OR IT導入補助金) after:${afterToday} (site:go.jp OR site:prtimes.jp)`,
-        `(サイバー攻撃 OR 大手IT 提携) after:${afterToday}`
-      ],
-      filler: `(IT ニュース OR 経済速報 OR デジタル庁) after:${afterYesterday} ${exclude}`
-    },
-    workYesterday: [
-      `(エンジニア採用 OR DX推進 OR AI導入) after:${afterYesterday} ${exclude}`,
-      `(IT企業 OR DX推進) (業務提携 OR 新サービス発表 OR 資金調達) after:${afterYesterday} site:prtimes.jp ${exclude}`
-    ],
-    urgentYesterday: [
-      `(日経平均株価 OR 為替介入 OR 円安) after:${afterYesterday}`,
-      `(デジタル庁 発表 OR IT導入補助金) after:${afterYesterday} (site:go.jp OR site:prtimes.jp)`,
-      `(サイバー攻撃 OR 大手IT 提携) after:${afterYesterday}`
-    ]
+    primaryQuery: [
+      "(エンジニア採用 OR DX推進 OR AI導入 OR 生成AI OR サイバー攻撃 OR 業務提携 OR 資金調達 OR IT導入補助金 OR デジタル庁)",
+      `(after:${afterToday})`,
+      "(site:prtimes.jp OR site:itmedia.co.jp OR site:yahoo.co.jp OR site:go.jp OR site:techpjin.jp OR site:tdb.co.jp)",
+      exclude
+    ].join(" "),
+    fallbackQuery: [
+      "(IT ニュース OR 経済速報 OR AI導入 OR サイバー攻撃 OR 業務提携 OR 資金調達)",
+      `(after:${afterYesterday})`,
+      "(site:prtimes.jp OR site:itmedia.co.jp OR site:yahoo.co.jp OR site:go.jp OR site:techpjin.jp OR site:tdb.co.jp)",
+      exclude
+    ].join(" ")
   };
 }
 
@@ -212,7 +206,105 @@ const isLikelyPaidUrl = (url: string): boolean => {
   }
 };
 
-async function fetchSerperResults(query: string, forcedCategory: "it" | "general"): Promise<RawNews[]> {
+function classifyCategory(title: string, snippet: string): "it" | "general" {
+  const t = `${title} ${snippet}`.toLowerCase();
+  const generalSignals = ["株価", "為替", "補助金", "行政", "規制", "円安", "政策", "政府"];
+  return generalSignals.some((k) => t.includes(k)) ? "general" : "it";
+}
+
+function toRawNewsFromOrganic(organic: SerperOrganicResult[]): RawNews[] {
+  const seen = new Set<string>();
+  return organic
+    .map((item): RawNews | null => {
+      const title = normalize(String(item.title ?? ""), 180);
+      const snippet = normalize(String(item.snippet ?? ""), 260);
+      const url = String(item.link ?? "").trim();
+      if (!title || !url) return null;
+      if (!isAllowedDomain(url)) return null;
+      if (isLikelyPaidUrl(url)) return null;
+      if (!isDirectArticleUrl(url)) return null;
+      const bucket = detectBucket(url);
+      if (!bucket) return null;
+      if (seen.has(url)) return null;
+      seen.add(url);
+      return {
+        title,
+        snippet,
+        url,
+        source: detectSourceName(url),
+        category: classifyCategory(title, snippet),
+        companyKey: extractCompanyKey(title, snippet, url),
+        bucket,
+        topic: detectTopic(title, snippet)
+      };
+    })
+    .filter((item): item is RawNews => item !== null);
+}
+
+async function fetchSerperResults(query: string): Promise<RawNews[]> {
+  if (process.env.NODE_ENV === "development") {
+    return [
+      {
+        title: "生成AI活用の採用DX、導入企業が増加",
+        snippet: "採用業務の自動化と評価基準の標準化が進む。",
+        url: "https://www.itmedia.co.jp/news/articles/2604/07/news001.html",
+        source: "ITmedia",
+        category: "it",
+        companyKey: "itmedia_dev_mock_1",
+        bucket: "tech",
+        topic: "newgrad"
+      },
+      {
+        title: "IT企業の業務提携が加速、開発職採用に波及",
+        snippet: "業務提携により中途採用ニーズが拡大。",
+        url: "https://prtimes.jp/main/html/rd/p/000000001.000000001.html",
+        source: "PR TIMES",
+        category: "general",
+        companyKey: "prtimes_dev_mock_2",
+        bucket: "prtimes",
+        topic: "management"
+      },
+      {
+        title: "サイバー攻撃対策への投資拡大",
+        snippet: "セキュリティ人材の採用競争が激化。",
+        url: "https://news.yahoo.co.jp/articles/example-3",
+        source: "Yahoo!ニュース",
+        category: "general",
+        companyKey: "yahoo_dev_mock_3",
+        bucket: "economy",
+        topic: "management"
+      },
+      {
+        title: "DX推進予算の再編、SaaS導入が増加",
+        snippet: "運用自動化とデータ連携の需要が拡大。",
+        url: "https://www.go.jp/sample/it-budget-4.html",
+        source: "go.jp",
+        category: "it",
+        companyKey: "gojp_dev_mock_4",
+        bucket: "public",
+        topic: "management"
+      },
+      {
+        title: "AIエージェント運用体制の整備が本格化",
+        snippet: "運用人材とプロダクト人材の採用が同時に増える。",
+        url: "https://techpjin.jp/news/sample-5",
+        source: "techpjin",
+        category: "it",
+        companyKey: "techpjin_dev_mock_5",
+        bucket: "tech",
+        topic: "newgrad"
+      }
+    ];
+  }
+
+  const cached = await getRawSearchCache(query).catch((e) => {
+    console.warn("[serper-cache] read failed:", e instanceof Error ? e.message : String(e));
+    return null;
+  });
+  if (cached) {
+    return toRawNewsFromOrganic(cached as SerperOrganicResult[]);
+  }
+
   const apiKey = process.env.SERPER_API_KEY ?? "";
   if (!apiKey) throw new Error("SERPER_API_KEY is missing");
 
@@ -238,33 +330,11 @@ async function fetchSerperResults(query: string, forcedCategory: "it" | "general
   }
 
   const data = (await response.json()) as { organic?: SerperOrganicResult[] };
-  const seen = new Set<string>();
-
-  return (data.organic ?? [])
-    .map((item): RawNews | null => {
-      const title = normalize(String(item.title ?? ""), 180);
-      const snippet = normalize(String(item.snippet ?? ""), 260);
-      const url = String(item.link ?? "").trim();
-      if (!title || !url) return null;
-      if (!isAllowedDomain(url)) return null;
-      if (isLikelyPaidUrl(url)) return null;
-      if (!isDirectArticleUrl(url)) return null;
-      const bucket = detectBucket(url);
-      if (!bucket) return null;
-      if (seen.has(url)) return null;
-      seen.add(url);
-      return {
-        title,
-        snippet,
-        url,
-        source: detectSourceName(url),
-        category: forcedCategory,
-        companyKey: extractCompanyKey(title, snippet, url),
-        bucket,
-        topic: detectTopic(title, snippet)
-      };
-    })
-    .filter((item): item is RawNews => item !== null);
+  const organic = data.organic ?? [];
+  await saveRawSearchCache(query, organic).catch((e) => {
+    console.warn("[serper-cache] write failed:", e instanceof Error ? e.message : String(e));
+  });
+  return toRawNewsFromOrganic(organic);
 }
 
 function pickFiveItems(all: RawNews[], cfg: ReturnType<typeof buildQueries>): RawNews[] {
@@ -320,25 +390,12 @@ function pickFiveItems(all: RawNews[], cfg: ReturnType<typeof buildQueries>): Ra
 }
 
 async function fetchMergedNews(cfg: ReturnType<typeof buildQueries>): Promise<RawNews[]> {
-  const runQueries = async (queries: readonly string[], category: "it" | "general") => {
-    const chunks = await Promise.all(queries.map((q) => fetchSerperResults(q, category)));
-    return chunks.flat();
-  };
-
-  const [workToday, urgentToday] = await Promise.all([
-    runQueries(cfg.queries.workToday, "it"),
-    runQueries(cfg.queries.urgentToday, "general")
-  ]);
-
-  let work = workToday;
-  let urgent = urgentToday;
-  if (work.length < cfg.split.work) {
-    const workYday = await runQueries(cfg.workYesterday, "it");
-    work = [...workToday, ...workYday];
-  }
-  if (urgent.length < cfg.split.urgent) {
-    const urgentYday = await runQueries(cfg.urgentYesterday, "general");
-    urgent = [...urgentToday, ...urgentYday];
+  // クレジット節約: まず包括クエリ1発。足りない場合のみフォールバック1発。
+  const primary = await fetchSerperResults(cfg.primaryQuery);
+  let mergedPool = primary;
+  if (mergedPool.length < TARGET) {
+    const fallback = await fetchSerperResults(cfg.fallbackQuery);
+    mergedPool = [...primary, ...fallback];
   }
 
   const seen = new Set<string>();
@@ -351,13 +408,7 @@ async function fetchMergedNews(cfg: ReturnType<typeof buildQueries>): Promise<Ra
     }
   };
 
-  pushUnique(work);
-  pushUnique(urgent);
-
-  if (merged.length < TARGET) {
-    const filler = await fetchSerperResults(cfg.queries.filler, "general");
-    pushUnique(filler);
-  }
+  pushUnique(mergedPool);
   return merged;
 }
 
@@ -521,14 +572,30 @@ export function dailyBriefToLineItems(items: DailyBriefItem[]): LineNewsItem[] {
 }
 
 export async function generateDailyBriefItems(): Promise<DailyBriefItem[]> {
-  const { today, yesterday } = jstDateStrings();
-  const cfg = buildQueries(today, yesterday);
-  const merged = await fetchMergedNews(cfg);
-  const picked = pickFiveItems(merged, cfg);
-  if (picked.length < TARGET) {
-    throw new Error(`Serper結果が${TARGET}件に満たませんでした（${picked.length}件）`);
+  const grounded = await generateGroundedNewsItems({
+    industry: process.env.WISEBRIEF_PROFILE_INDUSTRY ?? "IT・採用支援",
+    role: process.env.WISEBRIEF_PROFILE_ROLE ?? "経営者",
+    occupation: process.env.WISEBRIEF_PROFILE_OCCUPATION ?? "人材エージェント",
+    notes: process.env.WISEBRIEF_PROFILE_NOTES ?? "採用・DX・AI導入・経営トレンドを重視"
+  });
+
+  const items = grounded.slice(0, TARGET).map((item, idx) => ({
+    id: idx + 1,
+    category: item.category || "Business",
+    title: item.title,
+    summary: item.summary,
+    details: item.details,
+    doyaWord: item.doyaWord,
+    jobImpact: item.jobImpact,
+    url: item.url,
+    time: "本日",
+    icon: iconForCategory(item.category)
+  }));
+
+  if (items.length < TARGET) {
+    throw new Error(`Gemini結果が${TARGET}件に満たませんでした（${items.length}件）`);
   }
-  return llmToDailyBrief(picked);
+  return items;
 }
 
 /** LINE返信など従来形式 */

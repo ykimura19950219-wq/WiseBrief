@@ -78,7 +78,9 @@ async function pushToLineUser({
   }
 }
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function isNewsRequest(text: string) {
+  return /ニュース|news|武器/u.test((text ?? "").trim().toLowerCase());
+}
 
 export async function POST(req: Request) {
   const channelSecret = process.env.LINE_CHANNEL_SECRET ?? "";
@@ -117,6 +119,7 @@ export async function POST(req: Request) {
     const replyToken = firstMessageEvent.replyToken as string;
     const userText = firstMessageEvent.message.text as string;
     const userId = firstMessageEvent?.source?.userId as string | undefined;
+    const ceoUserId = process.env.LINE_CEO_USER_ID ?? "";
 
     const buildText = (list: any[]) => {
       const limit = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -166,32 +169,36 @@ export async function POST(req: Request) {
       return rawText.length > 1500 ? rawText.slice(0, 1499) : rawText;
     };
 
-    // 返信リクエストは即返し、生成〜返信はバックグラウンドで完了させる
+    if (!isNewsRequest(userText)) {
+      await replyToLine({
+        accessToken,
+        replyToken,
+        text: "「ニュース」と送ると、最新5件を生成してお届けします。"
+      });
+      return NextResponse.json({ ok: true }, { status: 200 });
+    }
+
+    // 先に即時返信し、重い処理はバックグラウンドで実行（Cold Startのタイムアウト回避）
+    await replyToLine({
+      accessToken,
+      replyToken,
+      text: "最新ニュースを収集中です。1分以内にお届けします。"
+    });
+
     void (async () => {
       let finalText = "";
-      const ceoUserId = process.env.LINE_CEO_USER_ID ?? "";
       try {
-        const openrouterKey = process.env.OPENROUTER_API_KEY;
-        if (!openrouterKey) console.warn("[line webhook] OPENROUTER_API_KEY missing");
-
-        // 内部APIをHTTPで叩かず、同サーバ内関数を直呼び（SSL通信エラー回避）
         const items = await generateNewsItems();
         finalText = buildText(items);
-        // 生成完了後に、1回だけまとめてpush（各宛先は各1回）
         if (userId) await pushToLineUser({ accessToken, userId, text: finalText });
-        if (ceoUserId)
-          await pushToLineUser({ accessToken, userId: ceoUserId, text: finalText });
+        if (ceoUserId) await pushToLineUser({ accessToken, userId: ceoUserId, text: finalText });
       } catch (e) {
-        // AI/生成失敗時はエラーメッセージをそのままLINEに返す
         finalText = e instanceof Error ? e.message : String(e);
         if (userId) await pushToLineUser({ accessToken, userId, text: finalText });
-        if (ceoUserId)
-          await pushToLineUser({ accessToken, userId: ceoUserId, text: finalText });
+        if (ceoUserId) await pushToLineUser({ accessToken, userId: ceoUserId, text: finalText });
         console.error("[line webhook] generate failed (sent error message):", e);
       }
     })();
-
-    void userText; // keep for debugging if needed
   }
 
   // LINE側は 200 を返せばOK

@@ -94,6 +94,12 @@ export type DailyBriefUpsertRow = {
   created_at: string;
 };
 
+export type RawSearchResultCacheRow = {
+  query: string;
+  results: unknown;
+  created_at: string;
+};
+
 const MAX_ERROR_DEPTH = 8;
 
 /** fetch 失敗時に cause / code 等をログ用に再帰展開（循環は深さで打ち切り） */
@@ -198,5 +204,61 @@ export async function supabaseUpsert(rows: DailyBriefUpsertRow[]): Promise<void>
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Supabase REST upsert failed: ${res.status} ${text}`.slice(0, 500));
+  }
+}
+
+export async function getRawSearchCache(query: string, maxAgeMs = 60 * 60 * 1000): Promise<unknown[] | null> {
+  assertSupabaseEnv();
+  const base = supabaseUrl.replace(/\/+$/, "");
+  const endpoint = `${base}/rest/v1/raw_search_results?select=query,results,created_at&query=eq.${encodeURIComponent(query)}&order=created_at.desc&limit=1`;
+
+  const res = await fetch(endpoint, {
+    method: "GET",
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      Accept: "application/json"
+    },
+    cache: "no-store"
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`raw_search_results cache select failed: ${res.status} ${text}`.slice(0, 400));
+  }
+
+  const rows = (await res.json().catch(() => [])) as RawSearchResultCacheRow[];
+  const row = rows[0];
+  if (!row) return null;
+
+  const createdAt = new Date(row.created_at).getTime();
+  if (!Number.isFinite(createdAt)) return null;
+  if (Date.now() - createdAt > maxAgeMs) return null;
+
+  return Array.isArray(row.results) ? row.results : null;
+}
+
+export async function saveRawSearchCache(query: string, results: unknown[]): Promise<void> {
+  assertSupabaseEnv();
+  const base = supabaseUrl.replace(/\/+$/, "");
+  const endpoint = `${base}/rest/v1/raw_search_results?on_conflict=query`;
+  const payload = [{ query, results, created_at: new Date().toISOString() }];
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      Prefer: "resolution=merge-duplicates",
+      Accept: "application/json"
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`raw_search_results cache upsert failed: ${res.status} ${text}`.slice(0, 400));
   }
 }
