@@ -99,7 +99,14 @@ export async function generateGroundedNewsItems(profile?: {
   }
 
   const apiKey = process.env.GOOGLE_API_KEY ?? "";
-  const modelName = process.env.GOOGLE_MODEL ?? "gemini-1.5-flash-latest";
+  const configuredModel = (process.env.GOOGLE_MODEL ?? "").trim();
+  const modelCandidates = Array.from(
+    new Set(
+      [configuredModel, "gemini-3-flash", "gemini-2.5-flash"].filter(
+        (m): m is string => Boolean(m)
+      )
+    )
+  );
   if (!apiKey) throw new Error("GOOGLE_API_KEY is missing");
 
   const p = {
@@ -122,19 +129,39 @@ export async function generateGroundedNewsItems(profile?: {
     "- 出力はJSONのみ: {\"items\":[...]}";
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    tools: [{ googleSearchRetrieval: {} }]
-  });
+  let result:
+    | Awaited<ReturnType<ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["generateContent"]>>
+    | null = null;
+  let lastError: unknown = null;
 
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 4096,
-      responseMimeType: "application/json"
+  for (const modelName of modelCandidates) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        // googleSearchRetrieval はニュースの新規性担保に必須
+        tools: [{ googleSearchRetrieval: {} }]
+      });
+      result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 4096,
+          responseMimeType: "application/json"
+        }
+      });
+      console.log("[gemini-grounding] model_selected:", modelName);
+      break;
+    } catch (e) {
+      lastError = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`[gemini-grounding] model_failed: ${modelName}`, msg);
     }
-  });
+  }
+
+  if (!result) {
+    const msg = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new Error(`Gemini model resolution failed: ${msg}`);
+  }
 
   const response = result.response;
   const payload = parsePayload(response.text());
