@@ -8,7 +8,7 @@ import {
   saveRawSearchCache,
   supabaseUpsert
 } from "@/lib/supabase";
-import { generateGroundedNewsItems } from "@/lib/geminiNews";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export type LineNewsItem = {
   事実: string;
@@ -61,8 +61,7 @@ type SerperOrganicResult = {
 };
 
 const SERPER_ENDPOINT = "https://google.serper.dev/search";
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-const OPENROUTER_MODEL = "google/gemini-2.0-flash-001";
+const GEMINI_SUMMARY_MODEL = "gemini-2.0-flash";
 
 const TARGET = 5;
 
@@ -92,16 +91,26 @@ function jstDateStrings() {
 
 function buildQueries(afterToday: string, afterYesterday: string) {
   const exclude = "-年収 -給与 -初任給 -ランキング";
+  const profileHint = [
+    process.env.WISEBRIEF_PROFILE_INDUSTRY,
+    process.env.WISEBRIEF_PROFILE_ROLE,
+    process.env.WISEBRIEF_PROFILE_OCCUPATION,
+    process.env.WISEBRIEF_PROFILE_NOTES
+  ]
+    .filter((x): x is string => Boolean(x && x.trim()))
+    .join(" ");
   return {
     split: { work: 3, urgent: 2 },
     primaryQuery: [
       "(エンジニア採用 OR DX推進 OR AI導入 OR 生成AI OR サイバー攻撃 OR 業務提携 OR 資金調達 OR IT導入補助金 OR デジタル庁)",
+      profileHint ? `(${profileHint})` : "",
       `(after:${afterToday})`,
       "(site:prtimes.jp OR site:itmedia.co.jp OR site:yahoo.co.jp OR site:go.jp OR site:techpjin.jp OR site:tdb.co.jp)",
       exclude
     ].join(" "),
     fallbackQuery: [
       "(IT ニュース OR 経済速報 OR AI導入 OR サイバー攻撃 OR 業務提携 OR 資金調達)",
+      profileHint ? `(${profileHint})` : "",
       `(after:${afterYesterday})`,
       "(site:prtimes.jp OR site:itmedia.co.jp OR site:yahoo.co.jp OR site:go.jp OR site:techpjin.jp OR site:tdb.co.jp)",
       exclude
@@ -306,7 +315,10 @@ async function fetchSerperResults(query: string): Promise<RawNews[]> {
   }
 
   const apiKey = process.env.SERPER_API_KEY ?? "";
-  if (!apiKey) throw new Error("SERPER_API_KEY is missing");
+  if (!apiKey) {
+    console.error("[serper] SERPER_API_KEY is missing");
+    throw new Error("SERPER_API_KEY が未設定のためニュース検索を実行できません。");
+  }
 
   const response = await fetch(SERPER_ENDPOINT, {
     method: "POST",
@@ -326,6 +338,7 @@ async function fetchSerperResults(query: string): Promise<RawNews[]> {
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+    console.error("[serper] request failed", { status: response.status, body: text.slice(0, 300) });
     throw new Error(`Serper request failed: ${response.status} ${text}`.slice(0, 300));
   }
 
@@ -511,8 +524,8 @@ function sanitizeDailyBrief(items: unknown, raw: RawNews[]): DailyBriefItem[] {
 }
 
 async function llmToDailyBrief(raw: RawNews[]): Promise<DailyBriefItem[]> {
-  const apiKey = process.env.OPENROUTER_API_KEY ?? "";
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is missing");
+  const apiKey = process.env.GOOGLE_API_KEY ?? "";
+  if (!apiKey) throw new Error("GOOGLE_API_KEY is missing");
 
   const candidates = raw
     .map(
@@ -537,27 +550,17 @@ async function llmToDailyBrief(raw: RawNews[]): Promise<DailyBriefItem[]> {
     '形式: {"items":[{...}, ...]} （itemsは必ず5件）\n' +
     `\n候補:\n${candidates}`;
 
-  const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: OPENROUTER_MODEL,
-      messages: [{ role: "user", content: prompt }],
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: GEMINI_SUMMARY_MODEL });
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
       temperature: 0.2,
-      max_tokens: 4500,
-      response_format: { type: "json_object" }
-    })
+      maxOutputTokens: 4096,
+      responseMimeType: "application/json"
+    }
   });
-
-  if (!response.ok) {
-    throw new Error(`OpenRouter error: ${response.status}`);
-  }
-
-  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const text = data.choices?.[0]?.message?.content ?? "";
+  const text = result.response.text() ?? "";
   const parsed = extractJsonObject(text);
   return sanitizeDailyBrief(parsed?.items, raw);
 }
@@ -572,30 +575,14 @@ export function dailyBriefToLineItems(items: DailyBriefItem[]): LineNewsItem[] {
 }
 
 export async function generateDailyBriefItems(): Promise<DailyBriefItem[]> {
-  const grounded = await generateGroundedNewsItems({
-    industry: process.env.WISEBRIEF_PROFILE_INDUSTRY ?? "IT・採用支援",
-    role: process.env.WISEBRIEF_PROFILE_ROLE ?? "経営者",
-    occupation: process.env.WISEBRIEF_PROFILE_OCCUPATION ?? "人材エージェント",
-    notes: process.env.WISEBRIEF_PROFILE_NOTES ?? "採用・DX・AI導入・経営トレンドを重視"
-  });
-
-  const items = grounded.slice(0, TARGET).map((item, idx) => ({
-    id: idx + 1,
-    category: item.category || "Business",
-    title: item.title,
-    summary: item.summary,
-    details: item.details,
-    doyaWord: item.doyaWord,
-    jobImpact: item.jobImpact,
-    url: item.url,
-    time: "本日",
-    icon: iconForCategory(item.category)
-  }));
-
-  if (items.length < TARGET) {
-    throw new Error(`Gemini結果が${TARGET}件に満たませんでした（${items.length}件）`);
+  const { today, yesterday } = jstDateStrings();
+  const cfg = buildQueries(today, yesterday);
+  const merged = await fetchMergedNews(cfg);
+  const picked = pickFiveItems(merged, cfg);
+  if (picked.length < TARGET) {
+    throw new Error(`Serper結果が${TARGET}件に満たませんでした（${picked.length}件）`);
   }
-  return items;
+  return llmToDailyBrief(picked);
 }
 
 /** LINE返信など従来形式 */
