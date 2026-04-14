@@ -99,14 +99,11 @@ export async function generateGroundedNewsItems(profile?: {
   }
 
   const apiKey = process.env.GOOGLE_API_KEY ?? "";
-  const configuredModel = (process.env.GOOGLE_MODEL ?? "").trim();
-  const modelCandidates = Array.from(
-    new Set(
-      [configuredModel, "gemini-1.5-flash", "gemini-1.5-pro"].filter(
-        (m): m is string => Boolean(m)
-      )
-    )
-  );
+  const modelCandidates = ["gemini-3-flash", "gemini-2.0-flash"] as const;
+  const toolCandidates: Array<Record<string, unknown>> = [
+    { googleSearch: {} },
+    { google_search: {} }
+  ];
   if (!apiKey) throw new Error("GOOGLE_API_KEY is missing");
   console.log("Using Key:", apiKey ? `${apiKey.slice(0, 5)}...` : "(missing)");
 
@@ -136,27 +133,31 @@ export async function generateGroundedNewsItems(profile?: {
   let lastError: unknown = null;
 
   for (const modelName of modelCandidates) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        // 最新仕様寄せ: googleSearch ツールを使用
-        tools: [{ googleSearch: {} } as any]
-      });
-      result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 4096,
-          responseMimeType: "application/json"
-        }
-      });
-      console.log("[gemini-grounding] model_selected:", modelName);
-      break;
-    } catch (e) {
-      lastError = e;
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`[gemini-grounding] model_failed: ${modelName}`, msg);
+    for (const tool of toolCandidates) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          tools: [tool as any]
+        });
+        result = await model.generateContent({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 4096,
+            responseMimeType: "application/json"
+          }
+        });
+        console.log("Model in use: gemini-3-flash");
+        console.log("[gemini-grounding] model_selected:", modelName);
+        console.log("[gemini-grounding] tool_selected:", Object.keys(tool)[0]);
+        break;
+      } catch (e) {
+        lastError = e;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn(`[gemini-grounding] model/tool_failed: ${modelName}/${Object.keys(tool)[0]}`, msg);
+      }
     }
+    if (result) break;
   }
 
   if (!result) {
