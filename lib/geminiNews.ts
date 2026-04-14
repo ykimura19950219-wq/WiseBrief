@@ -102,12 +102,13 @@ export async function generateGroundedNewsItems(profile?: {
   const configuredModel = (process.env.GOOGLE_MODEL ?? "").trim();
   const modelCandidates = Array.from(
     new Set(
-      [configuredModel, "gemini-3-flash", "gemini-2.5-flash"].filter(
+      [configuredModel, "gemini-1.5-flash", "gemini-1.5-pro"].filter(
         (m): m is string => Boolean(m)
       )
     )
   );
   if (!apiKey) throw new Error("GOOGLE_API_KEY is missing");
+  console.log("Using Key:", apiKey ? `${apiKey.slice(0, 5)}...` : "(missing)");
 
   const p = {
     industry: profile?.industry ?? "IT・採用支援",
@@ -138,8 +139,8 @@ export async function generateGroundedNewsItems(profile?: {
     try {
       const model = genAI.getGenerativeModel({
         model: modelName,
-        // googleSearchRetrieval はニュースの新規性担保に必須
-        tools: [{ googleSearchRetrieval: {} }]
+        // 最新仕様寄せ: googleSearch ツールを使用
+        tools: [{ googleSearch: {} } as any]
       });
       result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
